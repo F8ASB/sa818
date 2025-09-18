@@ -1,27 +1,77 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Test GitHub Pages</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            text-align: center;
-            margin-top: 100px;
-            background-color: #f0f8ff;
-        }
-        h1 {
-            color: #2c3e50;
-        }
-        p {
-            color: #7f8c8d;
-        }
-    </style>
+  <meta charset="UTF-8">
+  <title>SA818 Config Web</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    label { display: block; margin-top: 10px; }
+    input, select, button { margin-top: 5px; padding: 5px; }
+    #log { border: 1px solid #ccc; padding: 10px; margin-top: 15px; height: 150px; overflow-y: auto; background: #f9f9f9; }
+  </style>
 </head>
 <body>
-    <h1>Bienvenue sur ma page GitHub Pages !</h1>
-    <p>Si tu vois ce message, ton hébergement fonctionne correctement.</p>
-    <p>URL : <strong>https://<ton-nom-d-utilisateur>.github.io</strong></p>
+  <h1>Programmation SA818</h1>
+
+  <button id="connectBtn">Choisir un port COM</button>
+
+  <form id="configForm">
+    <label>Fréquence RX (MHz)
+      <input type="text" id="rxFreq" value="446.00625">
+    </label>
+    <label>Fréquence TX (MHz)
+      <input type="text" id="txFreq" value="446.00625">
+    </label>
+    <label>Volume (1–8)
+      <input type="number" id="volume" min="1" max="8" value="4">
+    </label>
+    <label>Squelch (0–8)
+      <input type="number" id="squelch" min="0" max="8" value="4">
+    </label>
+    <button type="submit">Envoyer config</button>
+  </form>
+
+  <div id="log"></div>
+
+  <script>
+    let port;
+    let writer;
+
+    function log(msg) {
+      document.getElementById('log').innerHTML += msg + "<br>";
+    }
+
+    document.getElementById('connectBtn').addEventListener('click', async () => {
+      try {
+        port = await navigator.serial.requestPort();
+        await port.open({ baudRate: 9600 });
+        writer = port.writable.getWriter();
+        log("✅ Port ouvert");
+      } catch (err) {
+        log("❌ Erreur: " + err);
+      }
+    });
+
+    document.getElementById('configForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!writer) {
+        log("⚠️ Connectez d'abord un port COM");
+        return;
+      }
+
+      const rx = document.getElementById('rxFreq').value;
+      const tx = document.getElementById('txFreq').value;
+      const vol = document.getElementById('volume').value;
+      const sql = document.getElementById('squelch').value;
+
+      // Exemple de commande pour SA818 : AT+DMOSETGROUP=0,TXFREQ,RXFREQ,SUBAUD,SQL,VOLUME
+      // (à adapter selon le manuel du SA818)
+      const cmd = `AT+DMOSETGROUP=0,${tx},${rx},0000,${sql},${vol}\r\n`;
+      log("➡️ Envoi: " + cmd);
+
+      const data = new TextEncoder().encode(cmd);
+      await writer.write(data);
+    });
+  </script>
 </body>
 </html>
