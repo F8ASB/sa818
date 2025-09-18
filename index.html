@@ -2,16 +2,16 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
-  <title>Configuration SA818</title>
+  <title>Configuration SA818 — CTCSS en fréquence</title>
   <style>
     body { font-family: Arial, sans-serif; margin: 20px; }
     fieldset { margin-bottom: 20px; padding: 15px; border-radius: 8px; }
     legend { font-weight: bold; }
-    label { display: inline-block; width: 160px; margin-bottom: 6px; }
+    label { display: inline-block; width: 160px; margin-bottom: 6px; vertical-align: top; }
     input, select { padding: 4px; margin-bottom: 8px; }
     button { margin-top: 10px; padding: 6px 12px; }
-    #topButtons { margin-bottom: 20px; } /* espace sous les boutons */
-    #log { border: 1px solid #ccc; padding: 10px; margin-top: 15px; height: 200px; overflow-y: auto; background: #f9f9f9; }
+    #topButtons { margin-bottom: 20px; }
+    #log { border: 1px solid #ccc; padding: 10px; margin-top: 15px; height: 220px; overflow-y: auto; background: #f9f9f9; white-space: pre-wrap; }
   </style>
 </head>
 <body>
@@ -37,13 +37,13 @@
     <label>Fréquence RX (MHz) :</label>
     <input type="text" id="rxFreq" value="433.5000"><br>
 
-    <label>CTCSS/CDCSS TX :</label>
+    <label>CTCSS TX :</label>
     <select id="txCss"></select><br>
 
     <label>Niveau Squelch :</label>
     <input type="number" id="squelch" min="0" max="8" value="4"><br>
 
-    <label>CTCSS/CDCSS RX :</label>
+    <label>CTCSS RX :</label>
     <select id="rxCss"></select><br>
 
     <button id="setGroupBtn">✅ Appliquer</button>
@@ -84,62 +84,65 @@
     let writer;
     let reader;
 
-    // Liste CTCSS standard
-    const ctcssList = [
-      "0000 OFF","0670","0719","0744","0770","0797","0825","0854","0885","0915",
-      "0948","0974","1000","1035","1072","1109","1148","1188","1230","1273",
-      "1318","1365","1413","1462","1514","1567","1622","1679","1738","1799",
-      "1862","1928","2035","2107","2181","2257","2336","2418","2503","2621",
-      "Z CDCSS exemples"
+    // Liste standard CTCSS (38 tons)
+    const ctcssFreqs = [
+      67.0, 71.9, 74.4, 77.0, 79.7, 82.5, 85.4, 88.5, 91.5, 94.8,
+      97.4,100.0,103.5,107.2,110.9,114.8,118.8,123.0,127.3,131.8,
+      136.5,141.3,146.2,151.4,156.7,162.2,167.9,173.8,179.9,186.2,
+      192.8,203.5,210.7,218.1,225.7,233.6,241.8,250.3
     ];
+
+    function padCode(n) { return String(n).padStart(4,'0'); }
 
     function populateCtcss(selectId) {
       const sel = document.getElementById(selectId);
       sel.innerHTML = "";
-      ctcssList.forEach(v => {
+      const offOpt = document.createElement("option");
+      offOpt.value = "OFF";
+      offOpt.text = "OFF";
+      sel.appendChild(offOpt);
+      for (let i = 0; i < ctcssFreqs.length; i++) {
+        const freq = ctcssFreqs[i];
         const opt = document.createElement("option");
-        if (v.includes("OFF")) {
-          opt.value = "0000";
-          opt.text = "0000 (OFF)";
-        } else if (v.startsWith("Z")) {
-          opt.disabled = true;
-          opt.text = "--- CDCSS (manuel) ---";
-        } else {
-          opt.value = v;
-          opt.text = v.slice(0,3)+"."+v.slice(3)+" Hz";
-        }
+        opt.value = freq.toFixed(1);
+        opt.text = `${freq.toFixed(1)} Hz`;
         sel.appendChild(opt);
-      });
+      }
     }
 
     populateCtcss("txCss");
     populateCtcss("rxCss");
 
     function log(msg) {
-      document.getElementById('log').innerHTML += msg + "<br>";
+      document.getElementById('log').innerHTML += msg + "\n";
       document.getElementById('log').scrollTop = document.getElementById('log').scrollHeight;
     }
 
     async function readLoop() {
-      while (port.readable) {
+      while (port && port.readable) {
         reader = port.readable.getReader();
         try {
           while (true) {
             const { value, done } = await reader.read();
             if (done) break;
             if (value) {
-              const text = new TextDecoder().decode(value);
+              const text = new TextDecoder().decode(value).trim();
+              if (!text) continue;
               log("⬅️ " + text);
 
-              if (text.startsWith("+DMOREADGROUP:")) {
-                const parts = text.replace("+DMOREADGROUP:","").trim().split(",");
-                if (parts.length === 6) {
+              if (text.startsWith("+DMOREADGROUP:") || text.startsWith("+DMOREADGROUP=")) {
+                let payload = text.replace("+DMOREADGROUP:","").replace("+DMOREADGROUP=","").trim();
+                payload = payload.replace(/\r/g,'').replace(/\n/g,'').trim();
+                const parts = payload.split(",");
+                if (parts.length >= 6) {
                   document.getElementById("gbw").value = parts[0];
                   document.getElementById("txFreq").value = parts[1];
                   document.getElementById("rxFreq").value = parts[2];
-                  document.getElementById("txCss").value = parts[3];
+                  setCtcssFromCode("txCss", parts[3]);
                   document.getElementById("squelch").value = parts[4];
-                  document.getElementById("rxCss").value = parts[5];
+                  setCtcssFromCode("rxCss", parts[5]);
+                } else {
+                  log("⚠️ Réponse inattendue: " + payload);
                 }
               }
             }
@@ -147,18 +150,45 @@
         } catch (err) {
           log("❌ Erreur lecture: " + err);
         } finally {
-          reader.releaseLock();
+          try { reader.releaseLock(); } catch(e) {}
         }
       }
     }
 
-    async function sendCommand(cmd) {
-      if (!writer) {
-        log("⚠️ Connectez d'abord un port COM");
-        return;
+    function setCtcssFromCode(selectId, code) {
+      const sel = document.getElementById(selectId);
+      if (code === "0000") {
+        sel.value = "OFF";
+      } else {
+        const idx = parseInt(code,10);
+        if (!isNaN(idx) && idx>=1 && idx<=38) {
+          sel.value = ctcssFreqs[idx-1].toFixed(1);
+        } else {
+          // valeur inconnue -> l'ajouter brute
+          let opt = document.createElement("option");
+          opt.value = code;
+          opt.text = `Code brut ${code}`;
+          sel.appendChild(opt);
+          sel.value = code;
+        }
       }
+    }
+
+    function getCtcssCode(selectId) {
+      const sel = document.getElementById(selectId);
+      const val = sel.value;
+      if (val === "OFF") return "0000";
+      const freq = parseFloat(val);
+      const idx = ctcssFreqs.indexOf(freq);
+      if (idx >= 0) return padCode(idx+1);
+      return val; // fallback (si code brut ajouté)
+    }
+
+    async function sendCommand(cmd) {
+      if (!writer) { log("⚠️ Connectez d'abord un port COM"); return; }
       log("➡️ " + cmd);
-      await writer.write(new TextEncoder().encode(cmd + "\r\n"));
+      try { await writer.write(new TextEncoder().encode(cmd + "\r\n")); }
+      catch (e) { log("❌ Erreur écriture: " + e); }
     }
 
     document.getElementById('connectBtn').addEventListener('click', async () => {
@@ -166,7 +196,7 @@
         port = await navigator.serial.requestPort();
         await port.open({ baudRate: 9600 });
         writer = port.writable.getWriter();
-        log("✅ Port ouvert");
+        log("✅ Port ouvert (9600,8,1,none)");
         readLoop();
       } catch (err) {
         log("❌ Erreur: " + err);
@@ -182,7 +212,7 @@
     });
 
     document.getElementById('setGroupBtn').addEventListener('click', () => {
-      const cmd = `AT+DMOSETGROUP=${document.getElementById("gbw").value},${document.getElementById("txFreq").value},${document.getElementById("rxFreq").value},${document.getElementById("txCss").value},${document.getElementById("squelch").value},${document.getElementById("rxCss").value}`;
+      const cmd = `AT+DMOSETGROUP=${document.getElementById("gbw").value},${document.getElementById("txFreq").value},${document.getElementById("rxFreq").value},${getCtcssCode("txCss")},${document.getElementById("squelch").value},${getCtcssCode("rxCss")}`;
       sendCommand(cmd);
     });
 
