@@ -10,15 +10,18 @@
     label { display: inline-block; width: 160px; margin-bottom: 6px; }
     input, select { padding: 4px; margin-bottom: 8px; }
     button { margin-top: 10px; padding: 6px 12px; }
+    #topButtons { margin-bottom: 20px; } /* espace sous les boutons */
     #log { border: 1px solid #ccc; padding: 10px; margin-top: 15px; height: 200px; overflow-y: auto; background: #f9f9f9; }
   </style>
 </head>
 <body>
   <h1>Contrôle du module SA818</h1>
 
-  <button id="connectBtn">🔌 Choisir un port COM</button>
-  <button id="readConfigBtn">📖 Lire configuration</button>
-  <button id="readVersionBtn">ℹ️ Lire version</button>
+  <div id="topButtons">
+    <button id="connectBtn">🔌 Choisir un port COM</button>
+    <button id="readConfigBtn">📖 Lire configuration</button>
+    <button id="readVersionBtn">ℹ️ Lire version</button>
+  </div>
 
   <fieldset>
     <legend>Groupe (fréquences, CTCSS, SQ)</legend>
@@ -35,13 +38,13 @@
     <input type="text" id="rxFreq" value="433.5000"><br>
 
     <label>CTCSS/CDCSS TX :</label>
-    <input type="text" id="txCss" value="0000"><br>
+    <select id="txCss"></select><br>
 
     <label>Niveau Squelch :</label>
     <input type="number" id="squelch" min="0" max="8" value="4"><br>
 
     <label>CTCSS/CDCSS RX :</label>
-    <input type="text" id="rxCss" value="0000"><br>
+    <select id="rxCss"></select><br>
 
     <button id="setGroupBtn">✅ Appliquer</button>
   </fieldset>
@@ -81,6 +84,37 @@
     let writer;
     let reader;
 
+    // Liste CTCSS standard
+    const ctcssList = [
+      "0000 OFF","0670","0719","0744","0770","0797","0825","0854","0885","0915",
+      "0948","0974","1000","1035","1072","1109","1148","1188","1230","1273",
+      "1318","1365","1413","1462","1514","1567","1622","1679","1738","1799",
+      "1862","1928","2035","2107","2181","2257","2336","2418","2503","2621",
+      "Z CDCSS exemples"
+    ];
+
+    function populateCtcss(selectId) {
+      const sel = document.getElementById(selectId);
+      sel.innerHTML = "";
+      ctcssList.forEach(v => {
+        const opt = document.createElement("option");
+        if (v.includes("OFF")) {
+          opt.value = "0000";
+          opt.text = "0000 (OFF)";
+        } else if (v.startsWith("Z")) {
+          opt.disabled = true;
+          opt.text = "--- CDCSS (manuel) ---";
+        } else {
+          opt.value = v;
+          opt.text = v.slice(0,3)+"."+v.slice(3)+" Hz";
+        }
+        sel.appendChild(opt);
+      });
+    }
+
+    populateCtcss("txCss");
+    populateCtcss("rxCss");
+
     function log(msg) {
       document.getElementById('log').innerHTML += msg + "<br>";
       document.getElementById('log').scrollTop = document.getElementById('log').scrollHeight;
@@ -97,7 +131,6 @@
               const text = new TextDecoder().decode(value);
               log("⬅️ " + text);
 
-              // si réponse au DMOREADGROUP → remplir formulaire
               if (text.startsWith("+DMOREADGROUP:")) {
                 const parts = text.replace("+DMOREADGROUP:","").trim().split(",");
                 if (parts.length === 6) {
@@ -154,18 +187,15 @@
     });
 
     document.getElementById('setVolumeBtn').addEventListener('click', () => {
-      const cmd = `AT+DMOSETVOLUME=${document.getElementById("volume").value}`;
-      sendCommand(cmd);
+      sendCommand(`AT+DMOSETVOLUME=${document.getElementById("volume").value}`);
     });
 
     document.getElementById('setFilterBtn').addEventListener('click', () => {
-      const cmd = `AT+SETFILTER=${document.getElementById("preemph").value},${document.getElementById("highpass").value},${document.getElementById("lowpass").value}`;
-      sendCommand(cmd);
+      sendCommand(`AT+SETFILTER=${document.getElementById("preemph").value},${document.getElementById("highpass").value},${document.getElementById("lowpass").value}`);
     });
 
     document.getElementById('setTailBtn').addEventListener('click', () => {
-      const cmd = `AT+SETTAIL=${document.getElementById("tail").value}`;
-      sendCommand(cmd);
+      sendCommand(`AT+SETTAIL=${document.getElementById("tail").value}`);
     });
   </script>
 </body>
