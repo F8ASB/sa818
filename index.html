@@ -2,101 +2,48 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
-  <title>SA818 Config Web</title>
+  <title>Lecture SA818</title>
   <style>
     body { font-family: Arial, sans-serif; margin: 20px; }
-    label { display: block; margin-top: 10px; }
-    input, select, button { margin-top: 5px; padding: 5px; }
-    #log { border: 1px solid #ccc; padding: 10px; margin-top: 15px; height: 150px; overflow-y: auto; background: #f9f9f9; }
-    .inline {display: inline-block; min-width: 120px;}
+    button { margin-top: 10px; padding: 8px 12px; }
+    #log { border: 1px solid #ccc; padding: 10px; margin-top: 15px; height: 200px; overflow-y: auto; background: #f9f9f9; }
   </style>
 </head>
 <body>
-  <h1>Programmation SA818 (tous paramètres)</h1>
+  <h1>Lecture configuration SA818</h1>
 
   <button id="connectBtn">Choisir un port COM</button>
-
-  <form id="configForm">
-    <label>Fréquence RX (MHz)
-      <input type="text" id="rxFreq" value="446.00625">
-    </label>
-    <label>Fréquence TX (MHz)
-      <input type="text" id="txFreq" value="446.00625">
-    </label>
-    <label>CTCSS RX (0000=off, 0670=67.0Hz, etc.)
-      <input type="text" id="ctcssRx" value="0000">
-    </label>
-    <label>CTCSS TX (0000=off, 0670=67.0Hz, etc.)
-      <input type="text" id="ctcssTx" value="0000">
-    </label>
-    <label>Squelch (0–8)
-      <input type="number" id="squelch" min="0" max="8" value="4">
-    </label>
-    <label>Volume (1–8)
-      <input type="number" id="volume" min="1" max="8" value="4">
-    </label>
-    <label>Bande passante
-      <select id="bandwidth">
-        <option value="0">12.5kHz (étroite)</option>
-        <option value="1">25kHz (large)</option>
-      </select>
-    </label>
-    <label>Pre-emphasis
-      <select id="preemphasis">
-        <option value="1">Activé</option>
-        <option value="0">Désactivé</option>
-      </select>
-    </label>
-    <label>Highpass
-      <select id="highpass">
-        <option value="1">Activé</option>
-        <option value="0">Désactivé</option>
-      </select>
-    </label>
-    <label>Lowpass
-      <select id="lowpass">
-        <option value="1">Activé</option>
-        <option value="0">Désactivé</option>
-      </select>
-    </label>
-    <label>Power Saving
-      <select id="save">
-        <option value="1">Activé</option>
-        <option value="0">Désactivé</option>
-      </select>
-    </label>
-    <label>Step (MHz, ex: 0.0125)
-      <input type="text" id="step" value="0.0125">
-    </label>
-    <label>VOX
-      <select id="vox">
-        <option value="1">Activé</option>
-        <option value="0">Désactivé</option>
-      </select>
-    </label>
-    <label>Gain micro (0–8)
-      <input type="number" id="micGain" min="0" max="8" value="4">
-    </label>
-    <label>Puissance émission
-      <select id="power">
-        <option value="1">Haute</option>
-        <option value="0">Basse</option>
-      </select>
-    </label>
-    <label>Time-out Timer (s)
-      <input type="number" id="tot" value="60" min="0">
-    </label>
-    <button type="submit">Envoyer config</button>
-  </form>
+  <button id="readConfigBtn">Lire configuration</button>
+  <button id="readVersionBtn">Lire version</button>
 
   <div id="log"></div>
 
   <script>
     let port;
     let writer;
+    let reader;
 
     function log(msg) {
       document.getElementById('log').innerHTML += msg + "<br>";
+    }
+
+    async function readLoop() {
+      while (port.readable) {
+        reader = port.readable.getReader();
+        try {
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            if (value) {
+              log("⬅️ Réponse: " + new TextDecoder().decode(value));
+            }
+          }
+        } catch (err) {
+          log("❌ Erreur lecture: " + err);
+        } finally {
+          reader.releaseLock();
+        }
+      }
     }
 
     document.getElementById('connectBtn').addEventListener('click', async () => {
@@ -105,76 +52,30 @@
         await port.open({ baudRate: 9600 });
         writer = port.writable.getWriter();
         log("✅ Port ouvert");
+        readLoop();
       } catch (err) {
         log("❌ Erreur: " + err);
       }
     });
 
-    document.getElementById('configForm').addEventListener('submit', async (e) => {
-      e.preventDefault();
+    document.getElementById('readConfigBtn').addEventListener('click', async () => {
       if (!writer) {
         log("⚠️ Connectez d'abord un port COM");
         return;
       }
+      const cmd = "AT+DMOREADGROUP\r\n";
+      log("➡️ Envoi: " + cmd);
+      await writer.write(new TextEncoder().encode(cmd));
+    });
 
-      // Récupération des valeurs du formulaire
-      const rx = document.getElementById('rxFreq').value;
-      const tx = document.getElementById('txFreq').value;
-      const ctcssRx = document.getElementById('ctcssRx').value;
-      const ctcssTx = document.getElementById('ctcssTx').value;
-      const vol = document.getElementById('volume').value;
-      const sql = document.getElementById('squelch').value;
-      const bandwidth = document.getElementById('bandwidth').value;
-      const preemphasis = document.getElementById('preemphasis').value;
-      const highpass = document.getElementById('highpass').value;
-      const lowpass = document.getElementById('lowpass').value;
-      const save = document.getElementById('save').value;
-      const step = document.getElementById('step').value;
-      const vox = document.getElementById('vox').value;
-      const micGain = document.getElementById('micGain').value;
-      const power = document.getElementById('power').value;
-      const tot = document.getElementById('tot').value;
-
-      // Commandes multiples pour tout configurer
-      // 1. Groupe de base (fréquences, subtone, squelch, volume, bandwidth)
-      const cmdGroup = `AT+DMOSETGROUP=${bandwidth},${tx},${rx},${ctcssTx},${ctcssRx},${sql},${vol}\r\n`;
-      log("➡️ Envoi: " + cmdGroup);
-      await writer.write(new TextEncoder().encode(cmdGroup));
-
-      // 2. Preemphasis, highpass, lowpass
-      const cmdAudio = `AT+SETFILTER=${preemphasis},${highpass},${lowpass}\r\n`;
-      log("➡️ Envoi: " + cmdAudio);
-      await writer.write(new TextEncoder().encode(cmdAudio));
-
-      // 3. Power save
-      const cmdPowerSave = `AT+SAVECONFIG=${save}\r\n`;
-      log("➡️ Envoi: " + cmdPowerSave);
-      await writer.write(new TextEncoder().encode(cmdPowerSave));
-
-      // 4. Step
-      const cmdStep = `AT+DMOSETSTEP=${step}\r\n`;
-      log("➡️ Envoi: " + cmdStep);
-      await writer.write(new TextEncoder().encode(cmdStep));
-
-      // 5. VOX
-      const cmdVox = `AT+VOX=${vox}\r\n`;
-      log("➡️ Envoi: " + cmdVox);
-      await writer.write(new TextEncoder().encode(cmdVox));
-
-      // 6. Mic gain
-      const cmdMicGain = `AT+MIC=${micGain}\r\n`;
-      log("➡️ Envoi: " + cmdMicGain);
-      await writer.write(new TextEncoder().encode(cmdMicGain));
-
-      // 7. Puissance émission
-      const cmdPower = `AT+DMOSETPOWER=${power}\r\n`;
-      log("➡️ Envoi: " + cmdPower);
-      await writer.write(new TextEncoder().encode(cmdPower));
-
-      // 8. Time-Out Timer
-      const cmdTot = `AT+SETTOT=${tot}\r\n`;
-      log("➡️ Envoi: " + cmdTot);
-      await writer.write(new TextEncoder().encode(cmdTot));
+    document.getElementById('readVersionBtn').addEventListener('click', async () => {
+      if (!writer) {
+        log("⚠️ Connectez d'abord un port COM");
+        return;
+      }
+      const cmd = "AT+VERSION\r\n";
+      log("➡️ Envoi: " + cmd);
+      await writer.write(new TextEncoder().encode(cmd));
     });
   </script>
 </body>
